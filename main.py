@@ -1,5 +1,5 @@
 import hashlib
-from flask import Flask, render_template, request, session, redirect, url_for, g
+from flask import Flask, render_template, request, session, redirect, url_for, g, send_file
 from flask_socketio import join_room, leave_room, send, SocketIO
 import random
 from string import ascii_uppercase
@@ -18,6 +18,8 @@ import base64
 import hmac
 import string
 from functools import wraps
+import qrcode
+import pyotp
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "hjhjsdahhds"
@@ -61,8 +63,8 @@ def login_required(func):
 
 
 def encrypt_message(message, key):
-    print("Message to encrypt: ", message)
-    print("Key: ", key)
+    # print("Message to encrypt: ", message)
+    # print("Key: ", key)
     iv = os.urandom(16)
     cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
     encryptor = cipher.encryptor()
@@ -83,7 +85,7 @@ def decrypt_message(ciphertext, key):
 
 ################################################################
 # Path to the database file
-db_file = "DB/db2.db"
+db_file = "DB/db5.db"
 
 # Connect to the SQLite database
 def get_db():
@@ -103,7 +105,8 @@ def init_users():
             username TEXT NOT NULL,
             password TEXT NOT NULL,
             email TEXT NOT NULL,
-            full_name TEXT NOT NULL
+            full_name TEXT NOT NULL,
+            secret_qrcode_key TEXT NOT NULL
         );
         """)
         db.commit()
@@ -240,10 +243,8 @@ def login():
         if user:
             # Verify the password using bcrypt
             if bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):
-                session['username'] = username
-
-                
-                return redirect(url_for('home'))
+                # Prompt user to enter OTP
+                return render_template('otp_verification.html', username=username)
             
         return 'Invalid username or password'
     
@@ -251,6 +252,7 @@ def login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    # print("here is request.form", request.form)
     session.clear()
     if request.method == 'POST':
         username = request.form['username']
@@ -260,6 +262,15 @@ def register():
         
         # Hash the password using bcrypt
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+        # Generate a secret key for the user
+        secret_qrcode_key = pyotp.random_base32()
+        
+        # Encode the secret key into a QR code
+        totp = pyotp.TOTP(secret_qrcode_key)
+        uri = totp.provisioning_uri(username)
+        img = qrcode.make(uri)
+        img.save(f"static/QRcodes/{username}_qr.png")  # Save the QR code image to a static folder
         
         # Insert new user into the database
         cursor = get_db().cursor()
@@ -269,13 +280,66 @@ def register():
         if existing_user:
             return 'Username or email already exists'
         
-        insert_query = "INSERT INTO users (id, username, password, email, full_name) VALUES (?, ?, ?, ?, ?)"
-        cursor.execute(insert_query, (str(uuid.uuid4()), username, hashed_password.decode('utf-8'), email, full_name))
+        insert_query = "INSERT INTO users (id, username, password, email, full_name, secret_qrcode_key) VALUES (?, ?, ?, ?, ?, ?)"
+        cursor.execute(insert_query, (str(uuid.uuid4()), username, hashed_password.decode('utf-8'), email, full_name, secret_qrcode_key))
         get_db().commit()
         
-        return redirect(url_for('login'))
-    
+        print("render_template_register_MFA.html")
+        return render_template('register_MFA.html', username=username)
+    print("render_template_register.html")
     return render_template('register.html')
+
+
+@app.route('/register_MFA/<username>', methods=['GET', 'POST'])
+def register_MFA(username):
+    print("template_register_MFA")
+    print("username:= ",username)
+    if request.method == 'POST':
+        otp = request.form.get('otp')
+
+        # Retrieve the secret key for the user from the database
+        cursor = get_db().cursor()
+        cursor.execute("SELECT secret_qrcode_key FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+
+        if user:
+            secret_key = user[0]
+            # Verify the OTP entered by the user
+            totp = pyotp.TOTP(secret_key)
+            if totp.verify(otp):
+                # OTP verification successful, redirect to home or any other route
+                return redirect(url_for('home'))
+            else:
+                # OTP verification failed, display error message
+                error = 'Invalid OTP. Please try again.'
+                return render_template('register_MFA.html', username=username, error=error)
+
+    # If it's a GET request or OTP verification failed, render the register_MFA.html template
+    return render_template('register_MFA.html', username=username)
+
+
+@app.route('/verify_otp', methods=['POST'])
+def verify_otp():
+    username = request.form['username']
+    otp = request.form['otp']
+
+    # Retrieve user from the database
+    cursor = get_db().cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    user = cursor.fetchone()
+
+    if user:
+        secret_key = user[6]  #secret key is stored in the 7th column
+        totp = pyotp.TOTP(secret_key)
+        if totp.verify(otp):
+            session['username'] = username
+            return redirect(url_for('home'))
+    
+    return 'Invalid OTP'
+
+@app.route('/qr_code/<username>')
+def qr_code(username):
+    return send_file(f"static/QRcodes/{username}_qr.png", mimetype='image/png')
 
 
 @socketio.on("message")

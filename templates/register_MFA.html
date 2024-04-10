@@ -1,0 +1,20 @@
+{% extends 'base.html' %} {% block content %}
+<h2>MFA</h2>
+<form class="form" method="post">
+    <div class="inputBox">
+        <img src="{{ url_for('qr_code', username=username) }}" alt="QR Code">
+    </div>
+  <div class="inputBox">
+    <input type="text"  name="otp""/><i>Enter OTP code</i>
+    </div>
+    <div class="links"> <a href="#"></a> <a class="a_logout" href="{{ url_for('login') }}">logout</a></div> 
+  <div class="inputBox">
+  <button class="button_create" type="submit" name="create" class="create-btn">submit QR</button>
+</div>
+  {% if error %}
+  <ul>
+    <li class="red_errors">{{error}}</li>
+  </ul>
+  {% endif %}
+</form>
+{% endblock %}
