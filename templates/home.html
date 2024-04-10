@@ -1,0 +1,23 @@
+{% extends 'base.html' %} {% block content %}
+<h2>Enter The Chat Room</h2>
+<form class="form" method="post">
+  <div class="inputBox">
+    <input type="text" placeholder="Pick a name!" name="username" value="{{username}}"readonly/><i class="username_diplayer">You logged in as:</i>
+  </div>
+  <div class="inputBox">
+    <input type="text"  name="code" value="{{code}}"/><i>Room Code</i>
+    </div>
+    <div class="links"> <a href="#"></a> <a class="a_logout" href="{{ url_for('login') }}">logout</a></div> 
+    <div class="inputBox">
+    <button class="button_join"  type="submit" name="join">Join a Room</button>
+  </div>
+  <div class="inputBox">
+  <button class="button_create" type="submit" name="create" class="create-btn">Create a Room</button>
+</div>
+  {% if error %}
+  <ul>
+    <li class="red_errors">{{error}}</li>
+  </ul>
+  {% endif %}
+</form>
+{% endblock %}

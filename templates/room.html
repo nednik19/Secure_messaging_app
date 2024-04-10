@@ -1,0 +1,58 @@
+{% extends 'base.html' %} {% block content %}
+  <h2>Chat Room:<br> {{code}}</h2>
+  <p id="users_count">Online: {{online}}</p>
+  <div class="message-box">
+  <div class="messages" id="messages"></div>
+  <div class="inputBox">
+    <input class="input_send" type="text" rows="3" placeholder="Message" name="message" id="message"/>
+    <button class="button_send" type="button" name="send" id="send-btn" onClick="sendMessage()">Send</button>
+  </div>
+  </div>
+<script type="text/javascript">
+  var socketio = io();
+
+  const messages = document.getElementById("messages");
+
+  const updateUsersCount = (users_count) => {
+    document.getElementById('users_count').innerText = users_count;
+  };
+
+  const createMessage = (username, msg) => {
+    const content = `
+    <div class="text">
+      <div class="">
+          <strong>${username}</strong>: ${msg}
+      </div>
+      <div class="muted">
+          ${new Date().toLocaleString()}
+      </div>
+</div>
+    `;
+    messages.innerHTML += content;
+  };
+
+  socketio.on("message", (data) => {
+    console.log(data);
+    switch (data.type) {
+      case "message":
+        createMessage(data.username, data.message);
+        break;
+      case "users_updated":
+        updateUsersCount(data.count);
+        break;
+    }
+  });
+
+  const sendMessage = () => {
+    const message = document.getElementById("message");
+    if (message.value == "") return;
+    console.log(message.value);
+    socketio.emit("message", { data: message.value });
+    message.value = "";
+  };
+</script>
+{% for msg in messages %}
+<script type="text/javascript">
+  createMessage("{{msg.username}}", "{{msg.message}}");
+</script>
+{% endfor %} {% endblock %}
