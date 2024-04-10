@@ -85,7 +85,7 @@ def decrypt_message(ciphertext, key):
 
 ################################################################
 # Path to the database file
-db_file = "DB/db5.db"
+db_file = "DB/db.db"
 
 # Connect to the SQLite database
 def get_db():
@@ -235,6 +235,8 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
+        session['username'] = username
+        
         # Retrieve user from the database
         cursor = get_db().cursor()
         cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
@@ -244,7 +246,7 @@ def login():
             # Verify the password using bcrypt
             if bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):
                 # Prompt user to enter OTP
-                return render_template('otp_verification.html', username=username)
+                return redirect(url_for('verify_otp', username=username))
             
         return 'Invalid username or password'
     
@@ -252,6 +254,7 @@ def login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    print("register")
     # print("here is request.form", request.form)
     session.clear()
     if request.method == 'POST':
@@ -284,18 +287,16 @@ def register():
         cursor.execute(insert_query, (str(uuid.uuid4()), username, hashed_password.decode('utf-8'), email, full_name, secret_qrcode_key))
         get_db().commit()
         
-        print("render_template_register_MFA.html")
-        return render_template('register_MFA.html', username=username)
-    print("render_template_register.html")
+        return redirect(url_for('register_MFA', username=username))
+    
     return render_template('register.html')
 
 
 @app.route('/register_MFA/<username>', methods=['GET', 'POST'])
 def register_MFA(username):
-    print("template_register_MFA")
-    print("username:= ",username)
     if request.method == 'POST':
         otp = request.form.get('otp')
+        username = request.form.get('username')
 
         # Retrieve the secret key for the user from the database
         cursor = get_db().cursor()
@@ -318,24 +319,36 @@ def register_MFA(username):
     return render_template('register_MFA.html', username=username)
 
 
-@app.route('/verify_otp', methods=['POST'])
+@app.route('/verify_otp', methods=['GET', 'POST'])
 def verify_otp():
-    username = request.form['username']
-    otp = request.form['otp']
+    if request.method == 'POST':
+        # Retrieve username and OTP from the session
+        username = session.get('username')
+        otp = request.form.get('otp')
+        
+        # Retrieve the secret key for the user from the database
+        cursor = get_db().cursor()
+        cursor.execute("SELECT secret_qrcode_key FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
 
-    # Retrieve user from the database
-    cursor = get_db().cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-    user = cursor.fetchone()
+        if user:
+            secret_key = user[0]
+            # Verify the OTP entered by the user
+            totp = pyotp.TOTP(secret_key)
+            if totp.verify(otp):
+                # OTP verification successful, set session variable for the user
+                session['username'] = username
+                return redirect(url_for('home'))
+            else:
+                # OTP verification failed, display error message
+                error = 'Invalid OTP. Please try again.'
+                return render_template('verify_otp.html', username=username, error=error)
 
-    if user:
-        secret_key = user[6]  #secret key is stored in the 7th column
-        totp = pyotp.TOTP(secret_key)
-        if totp.verify(otp):
-            session['username'] = username
-            return redirect(url_for('home'))
-    
-    return 'Invalid OTP'
+    # If it's a GET request or OTP verification failed, render the verify_OTP.html template
+    username = session.get('username')
+    return render_template('verify_otp.html', username=username)
+
+
 
 @app.route('/qr_code/<username>')
 def qr_code(username):

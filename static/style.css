@@ -409,3 +409,7 @@ input:valid ~ .i_room_code
   font-size: 24px; /* Adjust size as needed */
   animation: changeNumber 0.5s ease-in-out;
 }
+.qrcode{
+  width: 320px;
+  height: 320px;
+}

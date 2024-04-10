@@ -1,11 +1,6 @@
 {% extends 'base.html' %} {% block content %}
 <h2>MFA</h2>
 <form class="form" method="post">
-    <input type="hidden" name="username" value="{{username}}">
-    <div class="inputBox">
-        <img class="qrcode" src="{{ url_for('qr_code', username=username) }}" alt="QR Code">
-        <p>Open this QR code via Authmy or Google Authentificator and enter OTP</p>
-    </div>
   <div class="inputBox">
     <input type="text" id="otp_code" name="otp""/><i>Enter OTP code</i>
     </div>
