@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import base64
 import hmac
 import string
+from functools import wraps
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "hjhjsdahhds"
@@ -49,6 +50,14 @@ def derive_key_from_room(room_code):
     key_material = kdf.derive(room_code_bytes)
     
     return key_material
+
+def login_required(func):
+    @wraps(func)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        return func(*args, **kwargs)
+    return decorated_function
 
 
 def encrypt_message(message, key):
@@ -146,6 +155,7 @@ def teardown_db(exception):
 ################################################################
 
 @app.route("/", methods=["POST", "GET"])
+@login_required
 def home():
     # print("home " + request.method)
 
@@ -197,6 +207,7 @@ def home():
     return render_template("home.html", username=username)
 
 @app.route("/room")
+@login_required
 # @app.route("/room", methods=['GET', 'POST'])
 def room():
     # print(json.dumps(rooms, indent=4))
