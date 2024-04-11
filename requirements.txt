@@ -1,5 +1,6 @@
-Flask==2.1.1
+Flask==2.0.2
 Flask-SocketIO==5.1.1
-cryptography==36.0.0
 bcrypt==3.2.0
-werkzeug==2.1.1
+cryptography==36.0.1
+pyotp==2.8.1
+qrcode==7.3
