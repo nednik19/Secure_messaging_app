@@ -18,6 +18,7 @@ import string
 from functools import wraps
 import qrcode
 import pyotp
+import ssl
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "hjhjsdahhds"
@@ -25,6 +26,10 @@ socketio = SocketIO(app)
 
 # Path to the database file
 db_file = "DB/db.db"
+
+# Add SSL context
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain("cert.pem", "key.pem")
 
 def generate_unique_code(code_length):
     characters = string.ascii_uppercase + string.digits
@@ -548,4 +553,5 @@ def handle_database_error(error):
     return render_template('error.html', error=error), 500
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, port=8090)
+    # Use SSL context for running the app
+    socketio.run(app, debug=True, port=8090, ssl_context=context)
