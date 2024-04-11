@@ -2,11 +2,9 @@ import hashlib
 from flask import Flask, render_template, request, session, redirect, url_for, g, send_file
 from flask_socketio import join_room, leave_room, send, SocketIO
 import random
-from string import ascii_uppercase
 import os
 import sqlite3
 import bcrypt
-import json
 import uuid
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -259,9 +257,6 @@ def login():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    print("register")
-    # print("here is request.form", request.form)
-    session.clear()
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -278,7 +273,14 @@ def register():
         totp = pyotp.TOTP(secret_qrcode_key)
         uri = totp.provisioning_uri(username)
         img = qrcode.make(uri)
-        img.save(f"static/QRcodes/{username}_qr.png")  # Save the QR code image to a static folder
+        img_path = f"static/QRcodes/{username}_qr.png"
+        img.save(img_path)  # Save the QR code image to a static folder
+
+        # Store img_path in the session
+        session['img_path'] = img_path
+
+        # Set session variable indicating registration completion
+        session['registration_complete'] = True
         
         # Insert new user into the database
         cursor = get_db().cursor()
@@ -286,8 +288,9 @@ def register():
         existing_user = cursor.fetchone()
         
         if existing_user:
-            return 'Username or email already exists'
-        
+            error = 'Username or email already exists'
+            return render_template('register.html', error=error)
+
         insert_query = "INSERT INTO users (id, username, password, email, full_name, secret_qrcode_key) VALUES (?, ?, ?, ?, ?, ?)"
         cursor.execute(insert_query, (str(uuid.uuid4()), username, hashed_password.decode('utf-8'), email, full_name, secret_qrcode_key))
         get_db().commit()
@@ -297,8 +300,20 @@ def register():
     return render_template('register.html')
 
 
+
 @app.route('/register_MFA/<username>', methods=['GET', 'POST'])
 def register_MFA(username):
+
+    # Check if registration is complete
+    if not session.get('registration_complete'):
+        # Redirect to registration page if registration is not complete
+        return redirect(url_for('register'))
+    
+    img_path = session.get('img_path')
+    if img_path is None:
+        # Handle the case where img_path is not found in the session
+        return redirect(url_for('register'))  # Redirect to register route if img_path is not available
+    
     if request.method == 'POST':
         otp = request.form.get('otp')
         username = request.form.get('username')
@@ -313,7 +328,12 @@ def register_MFA(username):
             # Verify the OTP entered by the user
             totp = pyotp.TOTP(secret_key)
             if totp.verify(otp):
-                # OTP verification successful, redirect to home or any other route
+                # OTP verification successful, delete the QR code
+                img_path = f"static/QRcodes/{username}_qr.png"
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+                
+                # Redirect to home or any other route
                 return redirect(url_for('home'))
             else:
                 # OTP verification failed, display error message
@@ -321,7 +341,7 @@ def register_MFA(username):
                 return render_template('register_MFA.html', username=username, error=error)
 
     # If it's a GET request or OTP verification failed, render the register_MFA.html template
-    return render_template('register_MFA.html', username=username)
+    return render_template('register_MFA.html', username=username, img_path=img_path)
 
 
 @app.route('/verify_otp', methods=['GET', 'POST'])

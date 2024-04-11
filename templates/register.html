@@ -19,6 +19,11 @@
                 <div class="inputBox">
                     <input type="submit" value="Sign Up">
                 </div>
+                {% if error %}
+                    <ul>
+                        <li class="red_errors">{{error}}</li>
+                    </ul>
+                {% endif %}
             </form>
         </div>
     </div>
