@@ -440,13 +440,7 @@ def disconnect():
     username = session.get("username")
     leave_room(room)
     
-
-    # if room in rooms:
-    #     rooms[room]["members"] -= 1
-    #     if rooms[room]["members"] <= 0:
-    #         del rooms[room]
-    
-    send({"username": username, "message": "has left the room"}, to=room) #TODO: look like this is not displaying when user leaving the room
+    send({"type": "message", "username": username, "message": "has left the room"}, to=room)
     update_room_users_count(room, -1)
     print(f"{username} has left the room {room}")
 
