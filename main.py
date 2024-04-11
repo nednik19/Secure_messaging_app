@@ -23,14 +23,13 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = "hjhjsdahhds"
 socketio = SocketIO(app)
 
-# rooms = {}
+# Path to the database file
+db_file = "DB/db.db"
 
 def generate_unique_code(code_length):
     characters = string.ascii_uppercase + string.digits
     unique_code = ''.join(random.choices(characters, k=code_length))
     return unique_code
-
-################################################################
 
 # Function to derive encryption key from room code
 def derive_key_from_room(room_code):
@@ -81,9 +80,6 @@ def decrypt_message(ciphertext, key):
     # print("plaintext Type: ", type(plaintext))
     return plaintext.decode('utf-8')
 
-################################################################
-# Path to the database file
-db_file = "DB/db.db"
 
 # Connect to the SQLite database
 def get_db():
@@ -211,12 +207,9 @@ def home():
 @login_required
 # @app.route("/room", methods=['GET', 'POST'])
 def room():
-    # print(json.dumps(rooms, indent=4))
-    # print(request.method + " room")
+
     username = session.get("username")
     room = session.get("room")
-    # if request.method == 'POST'and room in rooms:
-    #     return render_template("room.html",username=username, code=room, messages=rooms[room]["messages"])
     
     room_exists = get_room(room)
     if room is None or session.get("username") is None or not room_exists:
@@ -234,7 +227,7 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        
+
         session['username'] = username
         
         # Retrieve user from the database
@@ -345,10 +338,14 @@ def register_MFA(username):
 
 
 @app.route('/verify_otp', methods=['GET', 'POST'])
+@login_required
 def verify_otp():
+    # Retrieve the username from the session
+    username_session = session.get('username')
+    
     if request.method == 'POST':
         # Retrieve username and OTP from the session
-        username = session.get('username')
+        username = username_session
         otp = request.form.get('otp')
         
         # Retrieve the secret key for the user from the database
@@ -370,14 +367,23 @@ def verify_otp():
                 return render_template('verify_otp.html', username=username, error=error)
 
     # If it's a GET request or OTP verification failed, render the verify_OTP.html template
-    username = session.get('username')
+    username = username_session
+    # Check if the username in the URL parameter matches the username in the session
+    if request.args.get('username') != username:
+        return redirect(url_for('home'))  # Redirect to home if the usernames don't match
+
     return render_template('verify_otp.html', username=username)
+
 
 
 
 @app.route('/qr_code/<username>')
 def qr_code(username):
-    return send_file(f"static/QRcodes/{username}_qr.png", mimetype='image/png')
+    try:
+        return send_file(f"static/QRcodes/{username}_qr.png", mimetype='image/png')
+    except FileNotFoundError:
+        return render_template('qr_error.html'), 404
+
 
 
 @socketio.on("message")
@@ -388,24 +394,11 @@ def message(data):
     room_exists = get_room(room)
     if not room_exists:
         return
-    # if room not in rooms:
-    #     return 
-    
-    # content = {
-    #     "username": session.get("username"),
-    #     "message": data["data"]
-    # }
-
-    # room
 
     # Retrieve encryption and authentication keys from the session
     # encryption_key = session.get('encryption_key')
     authentication_key = session.get('authentication_key')
 
-    # Encrypt the message
-    # print("Room_exists: ", room_exists)
-    # print("Here is your secret for room_exists: ", room_exists[2])
-    # print("Here is your secret for encryption_key: ", encryption_key)
     encrypted_message = encrypt_message(data['data'], room_exists[2])
     
 
@@ -414,7 +407,6 @@ def message(data):
     mac = h.digest()
 
     send({"type": "message", 'username': username, 'message': data['data']}, to=room)
-    # rooms[room]["messages"].append(content)
     print(f"{username} said: {data['data']}")
 
     # Insert message into the database
@@ -435,12 +427,10 @@ def connect(auth):
     if not room_exists:
         leave_room(room)
         return
-    # if room not in rooms:
 
     
     join_room(room)
     send({"type": "message", "username": username, "message": "has entered the room"}, to=room)
-    # TODO Update room members
     update_room_users_count(room, 1)
     print(f"{username} joined room {room}")
 
@@ -517,6 +507,51 @@ def update_room_users_count(room_code, delta):
     updated_row = cursor.fetchone()
     get_db().commit()
     send({"type": "users_updated", "count": updated_row[3]}, to=room_code)
+
+# Add error handlers for specific HTTP error codes
+    
+@app.errorhandler(401)
+def unauthorized_error(error):
+    app.logger.error(f"401 Unauthorized - You are not authorized to access this page. {str(error)}")
+
+    error = "401 Unauthorized - You are not authorized to access this page."
+    return render_template('error.html', error=error), 401
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    app.logger.error(f"403 Forbidden - You don't have permission to access this page. {str(error)}")    
+
+    error = "403 Forbidden - You don't have permission to access this page."
+    return render_template('error.html', error=error), 403
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('error.html'), 404
+
+@app.errorhandler(405)
+def method_not_allowed_error(error):
+    # Log the error
+    app.logger.error(f"Method Not Allowed error occurred: {str(error)}")
+    
+    # Display a user-friendly error message
+    error = "The method is not allowed for the requested URL."
+    return render_template('error.html', error=error), 405
+
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.error(f"Internal Server error. {str(error)}")
+
+    error = "Internal Server Error"
+    return render_template('error.html', error=error), 500
+
+@app.errorhandler(sqlite3.Error)
+def handle_database_error(error):
+    # Log the error for debugging purposes
+    app.logger.error(f"Database error occurred: {str(error)}")
+    
+    # Display a user-friendly error message
+    error = "An error occurred while accessing the database. Please try again later."
+    return render_template('error.html', error=error), 500
 
 if __name__ == "__main__":
     socketio.run(app, debug=True, port=8090)

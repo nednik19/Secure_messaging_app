@@ -1,0 +1,10 @@
+{% extends 'base.html' %} {% block content %}
+    <h2>Error</h2>
+    <p>Sorry, something went wrong.</p>
+    {% if error %}
+        <h3>here is the potential issue:</h3>
+        <ul>
+            <li class="red_errors">{{error}}</li>
+        </ul>
+    {% endif %}
+{% endblock %}

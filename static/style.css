@@ -98,6 +98,13 @@ section .signin .content p
   color: #0f0;
   text-transform: uppercase;
 }
+section .signin .content h3 
+{
+  font-size: 1.2em;
+  color: #0f0;
+  text-transform: uppercase;
+}
+
 section .signin .content .form 
 {
   width: 100%;
