@@ -231,6 +231,8 @@ def room():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     session.clear()
+    error = None  # Initialize error variable
+    
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -247,10 +249,13 @@ def login():
             if bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):
                 # Prompt user to enter OTP
                 return redirect(url_for('verify_otp', username=username))
-            
-        return 'Invalid username or password'
-    
-    return render_template('login.html')
+            else:
+                error = 'Invalid username or password'  # Set error message
+        else:
+            error = 'Invalid username or password'  # Set error message
+        
+    return render_template('login.html', error=error)  # Pass error to the template
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
