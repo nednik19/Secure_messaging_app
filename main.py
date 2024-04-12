@@ -25,11 +25,9 @@ app.config["SECRET_KEY"] = "hjhjsdahhds"
 socketio = SocketIO(app)
 
 # Path to the database file
-db_file = "DB/db3.db"
+db_file = "DB/db.db"
 
-# Add SSL context
-context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-context.load_cert_chain("cert.pem", "key.pem")
+
 
 def generate_unique_code(code_length):
     characters = string.ascii_uppercase + string.digits
@@ -65,8 +63,6 @@ def login_required(func):
 
 
 def encrypt_message(message, key):
-    # print("Message to encrypt: ", message)
-    # print("Key: ", key)
     iv = os.urandom(16)
     cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
     encryptor = cipher.encryptor()
@@ -81,8 +77,6 @@ def decrypt_message(ciphertext, key):
     cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
     decryptor = cipher.decryptor()
     plaintext = decryptor.update(ciphertext) + decryptor.finalize()
-    # print("Plaintext: ", plaintext, " key: ", key)
-    # print("plaintext Type: ", type(plaintext))
     return plaintext.decode('utf-8')
 
 
@@ -233,23 +227,31 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-
-        session['username'] = username
         
-        # Retrieve user from the database
-        cursor = get_db().cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-        user = cursor.fetchone()
-        
-        if user:
-            # Verify the password using bcrypt
-            if bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):
-                # Prompt user to enter OTP
-                return redirect(url_for('verify_otp', username=username))
+        # Validate username and password
+        if not username or not password:
+            error = 'Username and password are required'
+        else:
+            # Sanitize username and password
+            username = username.replace("'", "''")
+            password = password.replace("'", "''")
+            
+            session['username'] = username
+            
+            # Retrieve user from the database using parameterized query
+            cursor = get_db().cursor()
+            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+            user = cursor.fetchone()
+            
+            if user:
+                # Verify the password using bcrypt
+                if bcrypt.checkpw(password.encode('utf-8'), user[2].encode('utf-8')):
+                    # Prompt user to enter OTP
+                    return redirect(url_for('verify_otp', username=username))
+                else:
+                    error = 'Invalid username or password'  # Set error message
             else:
                 error = 'Invalid username or password'  # Set error message
-        else:
-            error = 'Invalid username or password'  # Set error message
         
     return render_template('login.html', error=error)  # Pass error to the template
 
@@ -510,7 +512,6 @@ def update_room_users_count(room_code, delta):
     send({"type": "users_updated", "count": updated_row[3]}, to=room_code)
 
 # Add error handlers for specific HTTP error codes
-    
 @app.errorhandler(401)
 def unauthorized_error(error):
     app.logger.error(f"401 Unauthorized - You are not authorized to access this page. {str(error)}")
@@ -553,6 +554,11 @@ def handle_database_error(error):
     # Display a user-friendly error message
     error = "An error occurred while accessing the database. Please try again later."
     return render_template('error.html', error=error), 500
+
+
+# Add SSL context
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain("cert.pem", "key.pem")
 
 if __name__ == "__main__":
     # Use SSL context for running the app
