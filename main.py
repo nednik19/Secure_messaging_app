@@ -25,7 +25,7 @@ app.config["SECRET_KEY"] = "hjhjsdahhds"
 socketio = SocketIO(app)
 
 # Path to the database file
-db_file = "DB/db.db"
+db_file = "DB/db3.db"
 
 # Add SSL context
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -119,7 +119,8 @@ def init_messages():
             id TEXT PRIMARY KEY,
             username TEXT NOT NULL REFERENCES users(username),
             room_code TEXT NOT NULL REFERENCES rooms(room_code),
-            message TEXT      
+            message TEXT,
+            hmac TEXT      
         );
         """)
         db.commit()
@@ -401,25 +402,24 @@ def message(data):
         return
 
     # Retrieve encryption and authentication keys from the session
-    # encryption_key = session.get('encryption_key')
+    room_encryption_key = room_exists[2]
     authentication_key = session.get('authentication_key')
-
-    encrypted_message = encrypt_message(data['data'], room_exists[2])
-    
 
     # Calculate HMAC digest using SHA256
     h = hmac.new(authentication_key, data['data'].encode('utf-8'), hashlib.sha256)
     mac = h.digest()
 
-    send({"type": "message", 'username': username, 'message': data['data']}, to=room)
-    print(f"{username} said: {data['data']}")
-
-    # Insert message into the database
+    # Encrypt the message
+    encrypted_message = encrypt_message(data['data'], room_encryption_key)
+    
+    # Store the message and its HMAC in the database
     cursor = get_db().cursor()
-    insert_query = "INSERT INTO messages (id, username, room_code, message) VALUES (?, ?, ?, ?)"
-    cursor.execute(insert_query, (str(uuid.uuid4()), username, room, encrypted_message))
+    insert_query = "INSERT INTO messages (id, username, room_code, message, hmac) VALUES (?, ?, ?, ?, ?)"
+    cursor.execute(insert_query, (str(uuid.uuid4()), username, room, encrypted_message, mac))
     get_db().commit()
 
+    send({"type": "message", 'username': username, 'message': data['data']}, to=room)
+    print(f"{username} said: {data['data']}")
 
 @socketio.on("connect")
 def connect(auth):
@@ -433,7 +433,6 @@ def connect(auth):
         leave_room(room)
         return
 
-    
     join_room(room)
     send({"type": "message", "username": username, "message": "has entered the room"}, to=room)
     update_room_users_count(room, 1)
@@ -480,9 +479,12 @@ def get_messages_in_room(room_code):
         return decrypted_messages  # Return empty list if room doesn't exist
 
     for message in messages:
-        # print("Here is the error of decoding the message", message[3])
-        # print("message type", type(message[3]))
-        # Decrypt each message and append to the list
+        # Verify the HMAC
+        calculated_hmac = hmac.new(session.get('authentication_key'), message[3], hashlib.sha256).digest()
+        if calculated_hmac != message[4]:  # If HMAC doesn't match, discard the message
+            continue
+
+        # Decrypt the message and append to the list
         message_decoded = decrypt_message(message[3], room[2])  # message[3] contains the encrypted message, room[2] contains the secret key
         decrypted_messages.append({"id": message[0], "username": message[1], "room_code": message[2], "message": message_decoded})
 
